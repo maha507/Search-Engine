@@ -1,48 +1,45 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { qdrantService } from '@/lib/qdrant';
+import { NextRequest, NextResponse } from "next/server";
+import { qdrant, deleteCollection } from "@/lib/qdrant";
 
 export async function GET() {
     try {
-        const collectionInfo = await qdrantService.getCollectionInfo();
-
-        return NextResponse.json({
-            success: true,
-            collection: collectionInfo,
-        });
+        const collections = await qdrant.getCollections();
+        return NextResponse.json(collections);
     } catch (error) {
-        console.error('Collection info error:', error);
+        console.error("Error fetching collections:", error);
         return NextResponse.json(
-            { error: error instanceof Error ? error.message : 'Failed to get collection info' },
+            { error: "Failed to fetch collections" },
             { status: 500 }
         );
     }
 }
 
-export async function POST(request: NextRequest) {
+export async function DELETE(request: NextRequest) {
     try {
-        const { action, filename } = await request.json();
+        const { searchParams } = new URL(request.url);
+        const collectionName = searchParams.get("name");
 
-        if (action === 'delete' && filename) {
-            await qdrantService.deleteDocument(filename);
-            return NextResponse.json({
-                success: true,
-                message: `Deleted documents for ${filename}`,
-            });
+        if (!collectionName) {
+            return NextResponse.json(
+                { error: "Collection name is required" },
+                { status: 400 }
+            );
         }
 
-        if (action === 'initialize') {
-            await qdrantService.initializeCollection();
-            return NextResponse.json({
-                success: true,
-                message: 'Collection initialized',
-            });
-        }
+        const result = await deleteCollection(collectionName);
 
-        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+        if (result.success) {
+            return NextResponse.json({ message: `Collection ${collectionName} deleted successfully` });
+        } else {
+            return NextResponse.json(
+                { error: "Failed to delete collection" },
+                { status: 500 }
+            );
+        }
     } catch (error) {
-        console.error('Collection action error:', error);
+        console.error("Error deleting collection:", error);
         return NextResponse.json(
-            { error: error instanceof Error ? error.message : 'Action failed' },
+            { error: "Failed to delete collection" },
             { status: 500 }
         );
     }

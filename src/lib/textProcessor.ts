@@ -1,85 +1,67 @@
-import mammoth from 'mammoth';
-import pdfParse from 'pdf-parse';
-import { v4 as uuidv4 } from 'uuid';
-import { DocumentChunk } from './qdrant';
+export function splitTextIntelligently(text: string, maxChunkSize: number = 800): string[] {
+    const chunks: string[] = [];
 
-export class TextProcessor {
-    private chunkSize = 1000;
-    private chunkOverlap = 200;
+    // First, split by paragraphs
+    const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
 
-    async processFile(file: Buffer, filename: string, mimeType: string): Promise<DocumentChunk[]> {
-        let text: string;
+    let currentChunk = "";
 
-        try {
-            switch (mimeType) {
-                case 'text/plain':
-                    text = file.toString('utf-8');
-                    break;
-                case 'application/pdf':
-                    const pdfData = await pdfParse(file);
-                    text = pdfData.text;
-                    break;
-                case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-                    const docResult = await mammoth.extractRawText({ buffer: file });
-                    text = docResult.value;
-                    break;
-                default:
-                    throw new Error(`Unsupported file type: ${mimeType}`);
+    for (const paragraph of paragraphs) {
+        // If paragraph is too long, split by sentences
+        if (paragraph.length > maxChunkSize) {
+            // Save current chunk if it exists
+            if (currentChunk.trim()) {
+                chunks.push(currentChunk.trim());
+                currentChunk = "";
             }
 
-            return this.chunkText(text, filename, mimeType);
-        } catch (error) {
-            console.error('Error processing file:', error);
-            throw error;
-        }
-    }
+            // Split long paragraph by sentences
+            const sentences = paragraph.split(/[.!?]+/).filter(s => s.trim().length > 0);
 
-    private chunkText(text: string, filename: string, fileType: string): DocumentChunk[] {
-        const chunks: DocumentChunk[] = [];
-        const cleanText = text.replace(/\s+/g, ' ').trim();
+            for (const sentence of sentences) {
+                const trimmedSentence = sentence.trim() + '.';
 
-        if (cleanText.length === 0) {
-            throw new Error('No text content found in file');
-        }
-
-        let start = 0;
-        let chunkIndex = 0;
-
-        while (start < cleanText.length) {
-            const end = Math.min(start + this.chunkSize, cleanText.length);
-            let chunkText = cleanText.slice(start, end);
-
-            // Try to break at word boundary
-            if (end < cleanText.length) {
-                const lastSpaceIndex = chunkText.lastIndexOf(' ');
-                if (lastSpaceIndex > this.chunkSize * 0.7) {
-                    chunkText = chunkText.slice(0, lastSpaceIndex);
+                if (currentChunk.length + trimmedSentence.length > maxChunkSize) {
+                    if (currentChunk.trim()) {
+                        chunks.push(currentChunk.trim());
+                    }
+                    currentChunk = trimmedSentence;
+                } else {
+                    currentChunk += (currentChunk ? ' ' : '') + trimmedSentence;
                 }
             }
-
-            chunks.push({
-                id: uuidv4(),
-                text: chunkText.trim(),
-                filename,
-                chunkIndex,
-                metadata: {
-                    fileType,
-                    uploadedAt: new Date().toISOString(),
-                    totalChunks: 0, // Will be updated after all chunks are created
-                },
-            });
-
-            start += chunkText.length - this.chunkOverlap;
-            chunkIndex++;
+        } else {
+            // Check if adding this paragraph would exceed chunk size
+            if (currentChunk.length + paragraph.length > maxChunkSize) {
+                if (currentChunk.trim()) {
+                    chunks.push(currentChunk.trim());
+                }
+                currentChunk = paragraph;
+            } else {
+                currentChunk += (currentChunk ? '\n\n' : '') + paragraph;
+            }
         }
-
-        // Update total chunks count
-        chunks.forEach(chunk => {
-            chunk.metadata.totalChunks = chunks.length;
-        });
-
-        return chunks;
     }
+
+    // Add the last chunk
+    if (currentChunk.trim()) {
+        chunks.push(currentChunk.trim());
+    }
+
+    // Filter out very short chunks (less than 50 characters)
+    return chunks.filter(chunk => chunk.length >= 50);
 }
 
-export const textProcessor = new TextProcessor();
+export function splitTextSimple(text: string, chunkSize: number): string[] {
+    const words = text.split(/\s+/).filter(word => word.length > 0);
+    const chunks: string[] = [];
+
+    for (let i = 0; i < words.length; i += chunkSize) {
+        const chunk = words.slice(i, i + chunkSize).join(" ");
+        if (chunk.trim().length > 0) {
+            chunks.push(chunk.trim());
+        }
+    }
+
+    return chunks;
+}

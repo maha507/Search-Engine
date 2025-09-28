@@ -1,58 +1,33 @@
-interface OllamaEmbeddingResponse {
-    embedding: number[];
-}
+import { Ollama } from 'ollama';
 
-export class OllamaService {
-    private baseUrl: string;
+const ollama = new Ollama({
+    host: process.env.OLLAMA_HOST || 'http://localhost:11434',
+});
 
-    constructor() {
-        this.baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-    }
+export async function generateEmbedding(text: string): Promise<number[]> {
+    try {
+        const response = await ollama.embeddings({
+            model: 'nomic-embed-text',
+            prompt: text,
+        });
 
-    async getEmbedding(text: string): Promise<number[]> {
-        try {
-            console.log('🧠 Generating embedding for text');
-            console.log('Getting embedding from:', `${this.baseUrl}/api/embeddings`);
-
-            const response = await fetch(`${this.baseUrl}/api/embeddings`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    model: 'nomic-embed-text',
-                    prompt: text,
-                }),
-            });
-
-            console.log('Ollama response status:', response.status);
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('Ollama error response:', errorText);
-                throw new Error(`Ollama embedding error: ${response.status} - ${errorText}`);
-            }
-
-            const data: OllamaEmbeddingResponse = await response.json();
-
-            // Validate embedding
-            if (!data.embedding || !Array.isArray(data.embedding)) {
-                throw new Error('Invalid embedding response from Ollama');
-            }
-
-            console.log('🔍 Embedding debug:');
-            console.log('- Type:', typeof data.embedding);
-            console.log('- Is Array:', Array.isArray(data.embedding));
-            console.log('- Length:', data.embedding.length);
-            console.log('- Sample values:', data.embedding.slice(0, 5));
-            console.log('- All numbers?:', data.embedding.every(v => typeof v === 'number'));
-
-            return data.embedding;
-        } catch (error) {
-            console.error('❌ Error getting embedding:', error);
-            throw error;
-        }
+        return response.embedding;
+    } catch (error) {
+        console.error('Error generating embedding:', error);
+        throw error;
     }
 }
 
-export const ollamaService = new OllamaService();
+export async function generateText(prompt: string, model: string = 'llama2'): Promise<string> {
+    try {
+        const response = await ollama.generate({
+            model: model,
+            prompt: prompt,
+        });
+
+        return response.response;
+    } catch (error) {
+        console.error('Error generating text:', error);
+        throw error;
+    }
+}

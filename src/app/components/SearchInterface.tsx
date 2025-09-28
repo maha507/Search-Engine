@@ -1,54 +1,54 @@
-"use client";
-import React, { useState } from 'react';
+'use client';
 
-interface Source {
-    title: string;
-    content: string;
-    score: number;
-}
+import { useState } from 'react';
 
 interface SearchResult {
-    answer: string;
-    sources: Source[];
+    id: string;
+    score: number;
+    text: string;
+    filename: string;
+    chunkIndex: number;
+    metadata: {
+        fileType: string;
+        uploadedAt: string;
+        totalChunks: number;
+    };
+}
+
+interface SearchResponse {
+    success: boolean;
+    query: string;
+    results: SearchResult[];
+    totalResults: number;
 }
 
 export default function SearchInterface() {
-    const [question, setQuestion] = useState('');
+    const [query, setQuery] = useState('');
     const [searching, setSearching] = useState(false);
-    const [result, setResult] = useState<SearchResult | null>(null);
+    const [results, setResults] = useState<SearchResponse | null>(null);
 
     const handleSearch = async () => {
-        if (!question.trim()) return;
+        if (!query.trim()) return;
 
         setSearching(true);
-        setResult(null);
-
         try {
             const response = await fetch('/api/search', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ question }),
+                body: JSON.stringify({ query: query.trim(), limit: 10 }),
             });
 
             const data = await response.json();
-
-            if (data.success) {
-                setResult({
-                    answer: data.answer,
-                    sources: data.sources || [],
-                });
-            } else {
-                setResult({
-                    answer: `Error: ${data.error}`,
-                    sources: [],
-                });
-            }
+            setResults(data);
         } catch (error) {
-            setResult({
-                answer: `Search failed: ${error}`,
-                sources: [],
+            console.error('Search error:', error);
+            setResults({
+                success: false,
+                query: query.trim(),
+                results: [],
+                totalResults: 0,
             });
         } finally {
             setSearching(false);
@@ -56,61 +56,79 @@ export default function SearchInterface() {
     };
 
     const handleKeyPress = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
+        if (e.key === 'Enter') {
             handleSearch();
         }
     };
 
     return (
-        <div className="bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-xl font-semibold mb-4">Ask Questions</h2>
+        <div className="space-y-4">
+            <h2 className="text-xl font-semibold">Search Documents</h2>
 
-            <div className="space-y-4">
-                <div className="flex space-x-2">
-                    <input
-                        type="text"
-                        value={question}
-                        onChange={(e) => setQuestion(e.target.value)}
-                        onKeyPress={handleKeyPress}
-                        placeholder="Ask a question about your documents..."
-                        className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                        onClick={handleSearch}
-                        disabled={searching || !question.trim()}
-                        className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 disabled:opacity-50"
-                    >
-                        {searching ? 'Searching...' : 'Search'}
-                    </button>
-                </div>
+            <div className="flex space-x-2">
+                <input
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Enter your search query..."
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                    onClick={handleSearch}
+                    disabled={!query.trim() || searching}
+                    className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                    {searching ? 'Searching...' : 'Search'}
+                </button>
+            </div>
 
-                {result && (
-                    <div className="space-y-4">
-                        <div className="bg-gray-50 p-4 rounded-md">
-                            <h3 className="font-semibold text-gray-800 mb-2">Answer:</h3>
-                            <p className="text-gray-700 whitespace-pre-wrap">{result.answer}</p>
-                        </div>
+            {results && (
+                <div className="space-y-4">
+                    {results.success ? (
+                        <>
+                            <div className="text-sm text-gray-600">
+                                Found {results.totalResults} results for "{results.query}"
+                            </div>
 
-                        {result.sources.length > 0 && (
-                            <div>
-                                <h3 className="font-semibold text-gray-800 mb-2">Sources:</h3>
-                                <div className="space-y-2">
-                                    {result.sources.map((source, index) => (
-                                        <div key={index} className="bg-blue-50 p-3 rounded-md">
-                                            <div className="flex justify-between items-start mb-1">
-                                                <span className="font-medium text-blue-800">{source.title}</span>
-                                                <span className="text-sm text-blue-600">Score: {source.score.toFixed(3)}</span>
+                            {results.results.length > 0 ? (
+                                <div className="space-y-4">
+                                    {results.results.map((result) => (
+                                        <div key={result.id} className="border border-gray-200 rounded-lg p-4">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div className="font-medium text-blue-600">
+                                                    {result.filename}
+                                                </div>
+                                                <div className="text-sm text-gray-500">
+                                                    Score: {(result.score * 100).toFixed(1)}%
+                                                </div>
                                             </div>
-                                            <p className="text-blue-700 text-sm">{source.content}</p>
+
+                                            <div className="text-sm text-gray-600 mb-2">
+                                                Chunk {result.chunkIndex + 1} of {result.metadata.totalChunks} •
+                                                {result.metadata.fileType} •
+                                                {new Date(result.metadata.uploadedAt).toLocaleDateString()}
+                                            </div>
+
+                                            <div className="text-gray-800 leading-relaxed">
+                                                {result.text}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
+                            ) : (
+                                <div className="text-gray-500 text-center py-8">
+                                    No results found for your query.
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <div className="bg-red-100 text-red-800 p-4 rounded">
+                            Search failed. Please try again.
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
